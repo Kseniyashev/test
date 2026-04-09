@@ -362,12 +362,20 @@
 
     async function fetchHistory(id) {
       if (id === 'usd') {
-        const to = new Date().toISOString().slice(0, 10);
-        const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-        const r = await fetch(`https://api.frankfurter.app/${from}..${to}?from=USD&to=RUB`);
-        const d = await r.json();
-        const labels = Object.keys(d.rates).sort();
-        const values = labels.map(l => d.rates[l].RUB);
+        const dates = [];
+        for (let i = 29; i >= 0; i--) {
+          dates.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+        }
+        const results = await Promise.all(
+          dates.map(d =>
+            fetch(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/usd.json`)
+              .then(r => r.json())
+              .then(data => ({ date: d, value: data.usd.rub }))
+              .catch(() => ({ date: d, value: null }))
+          )
+        );
+        const labels = results.map(r => new Date(r.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }));
+        const values = results.map(r => r.value);
         return { labels, values };
       }
 
