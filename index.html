@@ -2,10 +2,241 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Тест</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Котировки в реальном времени</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f0f1a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 400;
+      color: #888;
+      margin-bottom: 40px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .cards {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 16px;
+      padding: 32px 40px;
+      min-width: 220px;
+      text-align: center;
+      transition: border-color 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card:hover { border-color: #4a4a8a; }
+
+    .card .label {
+      font-size: 0.75rem;
+      color: #666;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .card .value {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -1px;
+      transition: color 0.5s;
+    }
+
+    .card .currency {
+      font-size: 1rem;
+      color: #555;
+      margin-top: 6px;
+    }
+
+    .card .change {
+      font-size: 0.85rem;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+
+    .up { color: #00e676; }
+    .down { color: #ff5252; }
+    .neutral { color: #888; }
+
+    .card .icon {
+      font-size: 2rem;
+      margin-bottom: 12px;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #00e676;
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .status {
+      margin-top: 40px;
+      font-size: 0.75rem;
+      color: #444;
+      display: flex;
+      align-items: center;
+    }
+
+    .loading .value { color: #333; }
+
+    @keyframes flash-green {
+      0% { background: rgba(0,230,118,0.15); }
+      100% { background: transparent; }
+    }
+
+    @keyframes flash-red {
+      0% { background: rgba(255,82,82,0.15); }
+      100% { background: transparent; }
+    }
+
+    .flash-up { animation: flash-green 1s ease-out; }
+    .flash-down { animation: flash-red 1s ease-out; }
+  </style>
 </head>
 <body>
-  <h1>Привет! Это тестовая страница.</h1>
-  <p>Опубликовано через Claude Code + GitHub Pages.</p>
+  <h1>Котировки в реальном времени</h1>
+
+  <div class="cards">
+    <div class="card loading" id="usd">
+      <div class="icon">💵</div>
+      <div class="label">Доллар / Рубль</div>
+      <div class="value" id="usd-val">—</div>
+      <div class="currency">USD → RUB</div>
+      <div class="change neutral" id="usd-change">загрузка...</div>
+    </div>
+
+    <div class="card loading" id="btc">
+      <div class="icon">₿</div>
+      <div class="label">Биткоин / Доллар</div>
+      <div class="value" id="btc-val">—</div>
+      <div class="currency">BTC → USD</div>
+      <div class="change neutral" id="btc-change">загрузка...</div>
+    </div>
+
+    <div class="card loading" id="oil">
+      <div class="icon">🛢️</div>
+      <div class="label">Нефть Brent</div>
+      <div class="value" id="oil-val">—</div>
+      <div class="currency">USD / баррель</div>
+      <div class="change neutral" id="oil-change">загрузка...</div>
+    </div>
+  </div>
+
+  <div class="status">
+    <span class="pulse"></span>
+    <span id="status-text">Обновление...</span>
+  </div>
+
+  <script>
+    const prev = { usd: null, btc: null, oil: null };
+
+    function fmt(n, decimals = 2) {
+      return n.toLocaleString('ru-RU', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    function setCard(id, value, changeText, changeClass) {
+      const valEl = document.getElementById(id + '-val');
+      const changeEl = document.getElementById(id + '-change');
+      const card = document.getElementById(id);
+
+      const oldVal = prev[id];
+      if (oldVal !== null && oldVal !== value) {
+        const cls = value > oldVal ? 'flash-up' : 'flash-down';
+        card.classList.remove('flash-up', 'flash-down');
+        void card.offsetWidth;
+        card.classList.add(cls);
+      }
+      prev[id] = value;
+
+      valEl.textContent = value;
+      changeEl.textContent = changeText;
+      changeEl.className = 'change ' + changeClass;
+      card.classList.remove('loading');
+    }
+
+    async function fetchUSD() {
+      try {
+        const r = await fetch('https://open.er-api.com/v6/latest/USD');
+        const d = await r.json();
+        const rate = d.rates.RUB;
+        setCard('usd', fmt(rate), 'Обновлено сейчас', 'neutral');
+      } catch (e) {
+        document.getElementById('usd-change').textContent = 'ошибка загрузки';
+      }
+    }
+
+    async function fetchBTC() {
+      try {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+        const d = await r.json();
+        const price = d.bitcoin.usd;
+        const change = d.bitcoin.usd_24h_change;
+        const sign = change >= 0 ? '+' : '';
+        const cls = change >= 0 ? 'up' : 'down';
+        setCard('btc', fmt(price, 0), `${sign}${fmt(change)}% за 24ч`, cls);
+      } catch (e) {
+        document.getElementById('btc-change').textContent = 'ошибка загрузки';
+      }
+    }
+
+    async function fetchOil() {
+      try {
+        const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/BZ=F?interval=1d&range=2d', {
+          headers: { 'Accept': 'application/json' }
+        });
+        const d = await r.json();
+        const closes = d.chart.result[0].indicators.quote[0].close;
+        const price = closes[closes.length - 1];
+        const prev_price = closes[closes.length - 2];
+        const change = ((price - prev_price) / prev_price) * 100;
+        const sign = change >= 0 ? '+' : '';
+        const cls = change >= 0 ? 'up' : 'down';
+        setCard('oil', fmt(price), `${sign}${fmt(change)}% к вчера`, cls);
+      } catch (e) {
+        document.getElementById('oil-change').textContent = 'ошибка загрузки';
+      }
+    }
+
+    function updateAll() {
+      Promise.all([fetchUSD(), fetchBTC(), fetchOil()]).then(() => {
+        const now = new Date().toLocaleTimeString('ru-RU');
+        document.getElementById('status-text').textContent = `Последнее обновление: ${now} · следующее через 30 сек`;
+      });
+    }
+
+    updateAll();
+    setInterval(updateAll, 30000);
+  </script>
 </body>
 </html>
